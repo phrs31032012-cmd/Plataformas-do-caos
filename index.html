@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jogo de Plataformas Mobile</title>
+<style>
+body, html { margin:0; padding:0; overflow:hidden; background:#111; font-family:Arial, sans-serif; }
+canvas { display:block; background:#111; }
+#score { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:#0ff; font-size:30px; font-weight:bold; }
+#lives { position:absolute; top:10px; left:10px; color:#f00; font-size:25px; font-weight:bold; }
+#mobileControls { display:flex; position:absolute; bottom:20px; width:100%; justify-content:space-between; padding:0 30px; }
+#joystick, #jumpBtn { width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,0.2); display:flex; justify-content:center; align-items:center; touch-action:none; }
+#joystickInner { width:40px; height:40px; background:rgba(255,255,255,0.5); border-radius:50%; position:relative; }
+#jumpBtn { background:rgba(255,255,0,0.6); font-size:40px; line-height:80px; color:#000; text-align:center; }
+</style>
+</head>
+<body>
+
+<div id="score">Pontos: 0</div>
+<div id="lives">Vidas: 3</div>
+<canvas id="gameCanvas"></canvas>
+<div id="mobileControls">
+  <div id="joystick"><div id="joystickInner"></div></div>
+  <div id="jumpBtn">↑</div>
+</div>
+
+<script>
+// ===== Inicialização =====
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+function resizeCanvas(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ===== Player =====
+let player = {x:50, y:0, w:30, h:30, vx:0, vy:0, onGround:false};
+const gravity = 0.7, jumpForce = -12;
+
+// ===== Plataformas =====
+let platforms = [];
+function createPlatform(x, y, w=100, h=20, color="#0ff"){ platforms.push({x,y,w,h,vy:0,active:true,color}); }
+
+// Plataforma inicial branca fixa
+createPlatform(canvas.width/2 - 50, canvas.height-50, 100, 20, "#fff");
+
+// Plataformas iniciais azuis
+for(let i=0;i<5;i++){
+  createPlatform(i*150+100, canvas.height-150 - i*50);
+}
+
+// ===== Câmera =====
+let camera = {x:0, y:0};
+
+// ===== Teclado =====
+let keys = {};
+document.addEventListener("keydown", e=>{ keys[e.key] = true; });
+document.addEventListener("keyup", e=>{ keys[e.key] = false; });
+
+// ===== Mobile =====
+let mobileDir = 0;
+document.getElementById("jumpBtn").addEventListener("touchstart", ()=>{ if(player.onGround) player.vy = jumpForce; });
+const joystick = document.getElementById("joystick");
+const joystickInner = document.getElementById("joystickInner");
+let joystickActive=false, startX=0, startY=0;
+joystick.addEventListener("touchstart", e=>{
+  joystickActive=true;
+  startX = e.touches[0].clientX;
+  startY = e.touches[0].clientY;
+});
+joystick.addEventListener("touchmove", e=>{
+  if(!joystickActive) return;
+  let dx = e.touches[0].clientX - startX;
+  mobileDir = dx < -10 ? -1 : dx > 10 ? 1 : 0;
+  // Move joystick interno visual
+  joystickInner.style.transform = `translate(${Math.max(Math.min(dx,40),-40)}px,0px)`;
+});
+joystick.addEventListener("touchend", ()=>{
+  joystickActive=false;
+  mobileDir=0;
+  joystickInner.style.transform = `translate(0px,0px)`;
+});
+
+// ===== Pontuação e vidas =====
+let score = 0;
+let maxY = player.y;
+let lives = 3;
+
+// ===== Loop principal =====
+function loop(){
+  // Movimento
+  player.vx = 0;
+  if(keys["ArrowLeft"] || keys["a"] || mobileDir===-1) player.vx=-5;
+  if(keys["ArrowRight"] || keys["d"] || mobileDir===1) player.vx=5;
+  player.vy += gravity;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // Colisão plataformas
+  player.onGround=false;
+  platforms.forEach(p=>{
+    if(!p.active) return;
+    if(player.x+player.w > p.x && player.x < p.x+p.w &&
+       player.y+player.h > p.y && player.y+player.h < p.y+p.h){
+      player.y = p.y - player.h;
+      player.vy = 0;
+      player.onGround = true;
+    }
+  });
+
+  // Atualiza pontuação
+  if(player.y < maxY){ score++; maxY = player.y; document.getElementById("score").innerText = "Pontos: " + score; }
+
+  // ===== Player cai =====
+  if(player.y > canvas.height){
+    lives--;
+    if(lives > 0){
+      player.x = canvas.width/2 - 50;
+      player.y = canvas.height - 80;
+      player.vx=0; player.vy=0;
+    } else {
+      // Reset completo
+      lives = 3;
+      score = 0;
+      maxY = player.y;
+      platforms = [];
+      createPlatform(canvas.width/2 - 50, canvas.height-50, 100, 20, "#fff");
+      for(let i=0;i<5;i++){
+        createPlatform(i*150+100, canvas.height-150 - i*50);
+      }
+      player.x = canvas.width/2 - 50;
+      player.y = canvas.height - 80;
+      player.vx=0; player.vy=0;
+      document.getElementById("score").innerText = "Pontos: " + score;
+    }
+    document.getElementById("lives").innerText = "Vidas: " + lives;
+  }
+
+  // Atualiza plataformas azuis (caem suavemente)
+  platforms.forEach(p=>{
+    if(p.color==="#0ff" && player.x > p.x + p.w/2 && p.active){
+      p.active=false;
+      p.vy = 5; // velocidade de queda
+    }
+    if(!p.active){
+      p.y += p.vy;
+    }
+  });
+
+  // Gera novas plataformas
+  if(platforms.filter(p=>p.color==="#0ff").length < 5){
+    let last = platforms.filter(p=>p.color==="#0ff").pop();
+    let x = last ? last.x + Math.random()*150 + 50 : 200;
+    let y = canvas.height - Math.random()*150 -50;
+    createPlatform(x,y);
+  }
+
+  // Câmera segue player
+  camera.x = player.x - canvas.width/2;
+  camera.y = player.y - canvas.height/2;
+
+  // ===== Desenho =====
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(-camera.x, -camera.y);
+
+  // Plataformas
+  platforms.forEach(p=>{
+    if(p.active){
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x,p.y,p.w,p.h);
+    } else {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x,p.y,p.w,p.h);
+    }
+  });
+
+  // Player
+  ctx.fillStyle = "#ff0";
+  ctx.fillRect(player.x,player.y,player.w,player.h);
+
+  ctx.restore();
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>
