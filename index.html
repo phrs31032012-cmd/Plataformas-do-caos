@@ -34,19 +34,26 @@ window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
 // ===== Player =====
-let player = {x:50, y:0, w:30, h:30, vx:0, vy:0, onGround:false};
+let player = {x:0, y:0, w:30, h:30, vx:0, vy:0, onGround:false};
 const gravity = 0.7, jumpForce = -12;
 
 // ===== Plataformas =====
 let platforms = [];
-function createPlatform(x, y, w=100, h=20, color="#0ff"){ platforms.push({x,y,w,h,vy:0,active:true,color}); }
+let platformWidth = 100; // largura padrão
+function createPlatform(x, y, w=platformWidth, h=20, color="#0ff"){
+  platforms.push({x,y,w,h,vy:0,active:true,color});
+}
 
-// Plataforma inicial branca fixa
-createPlatform(canvas.width/2 - 50, canvas.height-50, 100, 20, "#fff");
+// Plataforma inicial branca maior
+platformWidth = 200;
+createPlatform(canvas.width/2 - platformWidth/2, canvas.height-50, platformWidth, 20, "#fff");
 
-// Plataformas iniciais azuis
+// Plataformas azuis iniciais
+platformWidth = 100;
 for(let i=0;i<5;i++){
-  createPlatform(i*150+100, canvas.height-150 - i*50);
+  let x = 150 + i*130;
+  let y = canvas.height - 150 - i*50;
+  createPlatform(x, y);
 }
 
 // ===== Câmera =====
@@ -62,17 +69,15 @@ let mobileDir = 0;
 document.getElementById("jumpBtn").addEventListener("touchstart", ()=>{ if(player.onGround) player.vy = jumpForce; });
 const joystick = document.getElementById("joystick");
 const joystickInner = document.getElementById("joystickInner");
-let joystickActive=false, startX=0, startY=0;
+let joystickActive=false, startX=0;
 joystick.addEventListener("touchstart", e=>{
   joystickActive=true;
   startX = e.touches[0].clientX;
-  startY = e.touches[0].clientY;
 });
 joystick.addEventListener("touchmove", e=>{
   if(!joystickActive) return;
   let dx = e.touches[0].clientX - startX;
   mobileDir = dx < -10 ? -1 : dx > 10 ? 1 : 0;
-  // Move joystick interno visual
   joystickInner.style.transform = `translate(${Math.max(Math.min(dx,40),-40)}px,0px)`;
 });
 joystick.addEventListener("touchend", ()=>{
@@ -85,6 +90,7 @@ joystick.addEventListener("touchend", ()=>{
 let score = 0;
 let maxY = player.y;
 let lives = 3;
+let difficulty = 1; // aumenta a dificuldade a cada 100 pontos
 
 // ===== Loop principal =====
 function loop(){
@@ -108,25 +114,39 @@ function loop(){
     }
   });
 
-  // Atualiza pontuação
-  if(player.y < maxY){ score++; maxY = player.y; document.getElementById("score").innerText = "Pontos: " + score; }
+  // Atualiza pontuação e dificuldade
+  if(player.y < maxY){ 
+    score++; 
+    maxY = player.y; 
+    document.getElementById("score").innerText = "Pontos: " + score; 
+    difficulty = Math.floor(score/100) + 1; // a cada 100 pontos, dificuldade aumenta
+  }
 
   // ===== Player cai =====
   if(player.y > canvas.height){
     lives--;
     if(lives > 0){
-      player.x = canvas.width/2 - 50;
-      player.y = canvas.height - 80;
+      // volta ao início mantendo score
+      let firstPlatform = platforms.find(p=>p.color==="#fff");
+      player.x = firstPlatform.x + (firstPlatform.w - player.w)/2;
+      player.y = firstPlatform.y - player.h;
       player.vx=0; player.vy=0;
     } else {
       // Reset completo
       lives = 3;
       score = 0;
       maxY = player.y;
+      difficulty = 1;
       platforms = [];
-      createPlatform(canvas.width/2 - 50, canvas.height-50, 100, 20, "#fff");
+      // plataforma inicial
+      platformWidth = 200;
+      createPlatform(canvas.width/2 - platformWidth/2, canvas.height-50, platformWidth, 20, "#fff");
+      // plataformas azuis iniciais
+      platformWidth = 100;
       for(let i=0;i<5;i++){
-        createPlatform(i*150+100, canvas.height-150 - i*50);
+        let x = 150 + i*130;
+        let y = canvas.height - 150 - i*50;
+        createPlatform(x, y);
       }
       player.x = canvas.width/2 - 50;
       player.y = canvas.height - 80;
@@ -136,23 +156,23 @@ function loop(){
     document.getElementById("lives").innerText = "Vidas: " + lives;
   }
 
-  // Atualiza plataformas azuis (caem suavemente)
+  // Atualiza plataformas azuis (caem suavemente e mais rápido com dificuldade)
   platforms.forEach(p=>{
     if(p.color==="#0ff" && player.x > p.x + p.w/2 && p.active){
       p.active=false;
-      p.vy = 5; // velocidade de queda
+      p.vy = 3 + difficulty; // mais difícil = cai mais rápido
     }
     if(!p.active){
       p.y += p.vy;
     }
   });
 
-  // Gera novas plataformas
+  // Gera novas plataformas seguras
   if(platforms.filter(p=>p.color==="#0ff").length < 5){
     let last = platforms.filter(p=>p.color==="#0ff").pop();
-    let x = last ? last.x + Math.random()*150 + 50 : 200;
-    let y = canvas.height - Math.random()*150 -50;
-    createPlatform(x,y);
+    let x = last ? last.x + Math.random()*50 + (100 + difficulty*10) : 200; // distância aumenta com dificuldade
+    let y = canvas.height - Math.random()*150 - 50;
+    createPlatform(x, y);
   }
 
   // Câmera segue player
@@ -166,13 +186,8 @@ function loop(){
 
   // Plataformas
   platforms.forEach(p=>{
-    if(p.active){
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x,p.y,p.w,p.h);
-    } else {
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x,p.y,p.w,p.h);
-    }
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x,p.y,p.w,p.h);
   });
 
   // Player
