@@ -1,205 +1,157 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Jogo de Plataformas Mobile</title>
-<style>
-body, html { margin:0; padding:0; overflow:hidden; background:#111; font-family:Arial, sans-serif; }
-canvas { display:block; background:#111; }
-#score { position:absolute; top:10px; left:50%; transform:translateX(-50%); color:#0ff; font-size:30px; font-weight:bold; }
-#lives { position:absolute; top:10px; left:10px; color:#f00; font-size:25px; font-weight:bold; }
-#mobileControls { display:flex; position:absolute; bottom:20px; width:100%; justify-content:space-between; padding:0 30px; }
-#joystick, #jumpBtn { width:80px; height:80px; border-radius:50%; background:rgba(255,255,255,0.2); display:flex; justify-content:center; align-items:center; touch-action:none; }
-#joystickInner { width:40px; height:40px; background:rgba(255,255,255,0.5); border-radius:50%; position:relative; }
-#jumpBtn { background:rgba(255,255,0,0.6); font-size:40px; line-height:80px; color:#000; text-align:center; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jogo das Plataformas</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: #000;
+    }
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #0ff;
+      font-size: 30px;
+      font-weight: bold;
+    }
+    #lives {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #f00;
+      font-size: 25px;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
+  <div id="score">Pontos: 0</div>
+  <div id="lives">Vidas: 3</div>
+  <canvas id="gameCanvas" width="500" height="600"></canvas>
 
-<div id="score">Pontos: 0</div>
-<div id="lives">Vidas: 3</div>
-<canvas id="gameCanvas"></canvas>
-<div id="mobileControls">
-  <div id="joystick"><div id="joystickInner"></div></div>
-  <div id="jumpBtn">↑</div>
-</div>
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
 
-<script>
-// ===== Inicialização =====
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-function resizeCanvas(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
+    let player = { x: canvas.width/2 - 20, y: canvas.height-80, w: 40, h: 40, vx: 0, vy: 0 };
+    let gravity = 0.5;
+    let jump = -10;
+    let platforms = [];
+    let score = 0;
+    let maxY = player.y;
+    let lives = 3;
+    let difficulty = 1;
 
-// ===== Player =====
-let player = {x:0, y:0, w:30, h:30, vx:0, vy:0, onGround:false};
-const gravity = 0.7, jumpForce = -12;
-
-// ===== Plataformas =====
-let platforms = [];
-let platformWidth = 100; // largura padrão
-function createPlatform(x, y, w=platformWidth, h=20, color="#0ff"){
-  platforms.push({x,y,w,h,vy:0,active:true,color});
-}
-
-// Plataforma inicial branca maior
-platformWidth = 200;
-createPlatform(canvas.width/2 - platformWidth/2, canvas.height-50, platformWidth, 20, "#fff");
-
-// Plataformas azuis iniciais
-platformWidth = 100;
-for(let i=0;i<5;i++){
-  let x = 150 + i*130;
-  let y = canvas.height - 150 - i*50;
-  createPlatform(x, y);
-}
-
-// ===== Câmera =====
-let camera = {x:0, y:0};
-
-// ===== Teclado =====
-let keys = {};
-document.addEventListener("keydown", e=>{ keys[e.key] = true; });
-document.addEventListener("keyup", e=>{ keys[e.key] = false; });
-
-// ===== Mobile =====
-let mobileDir = 0;
-document.getElementById("jumpBtn").addEventListener("touchstart", ()=>{ if(player.onGround) player.vy = jumpForce; });
-const joystick = document.getElementById("joystick");
-const joystickInner = document.getElementById("joystickInner");
-let joystickActive=false, startX=0;
-joystick.addEventListener("touchstart", e=>{
-  joystickActive=true;
-  startX = e.touches[0].clientX;
-});
-joystick.addEventListener("touchmove", e=>{
-  if(!joystickActive) return;
-  let dx = e.touches[0].clientX - startX;
-  mobileDir = dx < -10 ? -1 : dx > 10 ? 1 : 0;
-  joystickInner.style.transform = `translate(${Math.max(Math.min(dx,40),-40)}px,0px)`;
-});
-joystick.addEventListener("touchend", ()=>{
-  joystickActive=false;
-  mobileDir=0;
-  joystickInner.style.transform = `translate(0px,0px)`;
-});
-
-// ===== Pontuação e vidas =====
-let score = 0;
-let maxY = player.y;
-let lives = 3;
-let difficulty = 1; // aumenta a dificuldade a cada 100 pontos
-
-// ===== Loop principal =====
-function loop(){
-  // Movimento
-  player.vx = 0;
-  if(keys["ArrowLeft"] || keys["a"] || mobileDir===-1) player.vx=-5;
-  if(keys["ArrowRight"] || keys["d"] || mobileDir===1) player.vx=5;
-  player.vy += gravity;
-  player.x += player.vx;
-  player.y += player.vy;
-
-  // Colisão plataformas
-  player.onGround=false;
-  platforms.forEach(p=>{
-    if(!p.active) return;
-    if(player.x+player.w > p.x && player.x < p.x+p.w &&
-       player.y+player.h > p.y && player.y+player.h < p.y+p.h){
-      player.y = p.y - player.h;
-      player.vy = 0;
-      player.onGround = true;
+    function createPlatform(x, y, w=100, h=20, color="#0ff") {
+      platforms.push({x, y, w, h, color});
     }
-  });
 
-  // Atualiza pontuação e dificuldade
-  if(player.y < maxY){ 
-    score++; 
-    maxY = player.y; 
-    document.getElementById("score").innerText = "Pontos: " + score; 
-    difficulty = Math.floor(score/100) + 1; // a cada 100 pontos, dificuldade aumenta
-  }
-
-  // ===== Player cai =====
-  if(player.y > canvas.height){
-    lives--;
-    if(lives > 0){
-      // volta ao início mantendo score
-      let firstPlatform = platforms.find(p=>p.color==="#fff");
-      player.x = firstPlatform.x + (firstPlatform.w - player.w)/2;
-      player.y = firstPlatform.y - player.h;
-      player.vx=0; player.vy=0;
-    } else {
-      // Reset completo
-      lives = 3;
-      score = 0;
-      maxY = player.y;
-      difficulty = 1;
+    function resetPlatforms(){
       platforms = [];
-      // plataforma inicial
-      platformWidth = 200;
-      createPlatform(canvas.width/2 - platformWidth/2, canvas.height-50, platformWidth, 20, "#fff");
-      // plataformas azuis iniciais
-      platformWidth = 100;
+      // plataforma inicial branca (maior e segura)
+      createPlatform(canvas.width/2 - 100, canvas.height-50, 200, 20, "#fff");
+      // primeiras plataformas azuis mais próximas
       for(let i=0;i<5;i++){
         let x = 150 + i*130;
         let y = canvas.height - 150 - i*50;
         createPlatform(x, y);
       }
-      player.x = canvas.width/2 - 50;
-      player.y = canvas.height - 80;
-      player.vx=0; player.vy=0;
-      document.getElementById("score").innerText = "Pontos: " + score;
     }
-    document.getElementById("lives").innerText = "Vidas: " + lives;
-  }
 
-  // Atualiza plataformas azuis (caem suavemente e mais rápido com dificuldade)
-  platforms.forEach(p=>{
-    if(p.color==="#0ff" && player.x > p.x + p.w/2 && p.active){
-      p.active=false;
-      p.vy = 3 + difficulty; // mais difícil = cai mais rápido
+    resetPlatforms();
+
+    // controles
+    document.addEventListener("keydown", e=>{
+      if(e.key==="ArrowLeft") player.vx=-5;
+      if(e.key==="ArrowRight") player.vx=5;
+      if(e.key===" " && player.vy===0) player.vy=jump;
+    });
+    document.addEventListener("keyup", e=>{
+      if(e.key==="ArrowLeft" || e.key==="ArrowRight") player.vx=0;
+    });
+
+    function gameLoop(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // aplicar gravidade
+      player.vy += gravity;
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // colisão com plataformas
+      platforms.forEach(p=>{
+        if(player.x < p.x+p.w && player.x+player.w > p.x &&
+           player.y+player.h > p.y && player.y+player.h < p.y+p.h && player.vy>=0){
+          player.vy = jump;
+          if(p.color==="#0ff"){
+            score++;
+            document.getElementById("score").innerText = "Pontos: " + score;
+          }
+        }
+      });
+
+      // dificuldade aumenta a cada 100 pontos
+      if(score > 0 && score % 100 === 0){
+        difficulty = 1 + Math.floor(score/100);
+      }
+
+      // desenhar player
+      ctx.fillStyle = "#ff0";
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+
+      // desenhar plataformas
+      ctx.fillStyle = "#0ff";
+      platforms.forEach(p=>{
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x,p.y,p.w,p.h);
+        if(p.color==="#0ff"){
+          p.y += 0.5 * difficulty; // caem mais rápido com a dificuldade
+        }
+      });
+
+      // limites da tela
+      if(player.x<0) player.x=0;
+      if(player.x+player.w>canvas.width) player.x=canvas.width-player.w;
+
+      // queda do player
+      if(player.y > canvas.height){
+        lives--;
+        if(lives > 0){
+          // volta do início com pontos preservados
+          player.x = canvas.width/2 - 20;
+          player.y = canvas.height - 80;
+          player.vx = 0;
+          player.vy = 0;
+          resetPlatforms();
+        } else {
+          // game over → reset total
+          lives = 3;
+          score = 0;
+          difficulty = 1;
+          resetPlatforms();
+          player.x = canvas.width/2 - 20;
+          player.y = canvas.height - 80;
+          player.vx = 0;
+          player.vy = 0;
+        }
+        document.getElementById("lives").innerText = "Vidas: " + lives;
+        document.getElementById("score").innerText = "Pontos: " + score;
+      }
+
+      requestAnimationFrame(gameLoop);
     }
-    if(!p.active){
-      p.y += p.vy;
-    }
-  });
 
-  // Gera novas plataformas seguras
-  if(platforms.filter(p=>p.color==="#0ff").length < 5){
-    let last = platforms.filter(p=>p.color==="#0ff").pop();
-    let x = last ? last.x + Math.random()*50 + (100 + difficulty*10) : 200; // distância aumenta com dificuldade
-    let y = canvas.height - Math.random()*150 - 50;
-    createPlatform(x, y);
-  }
-
-  // Câmera segue player
-  camera.x = player.x - canvas.width/2;
-  camera.y = player.y - canvas.height/2;
-
-  // ===== Desenho =====
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.save();
-  ctx.translate(-camera.x, -camera.y);
-
-  // Plataformas
-  platforms.forEach(p=>{
-    ctx.fillStyle = p.color;
-    ctx.fillRect(p.x,p.y,p.w,p.h);
-  });
-
-  // Player
-  ctx.fillStyle = "#ff0";
-  ctx.fillRect(player.x,player.y,player.w,player.h);
-
-  ctx.restore();
-  requestAnimationFrame(loop);
-}
-
-loop();
-</script>
-
+    gameLoop();
+  </script>
 </body>
 </html>
